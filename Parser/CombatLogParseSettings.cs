@@ -35,7 +35,7 @@ public class CombatLogParseSettings : INotifyPropertyChanged
     private bool _isRemoveEntityOutliersNonPlayers;
     private bool _isRemoveEntityOutliersPlayers = true;
     private CombatMapDetectionSettings? _mapDetectionSettings;
-    private int _minInActiveInSeconds = 4;
+    private int _minInActiveInSeconds = 6;
     private string? _myCharacter;
     private TimeSpan _timeSpanMaxBetweenCombatForCombine = TimeSpan.FromMinutes(3);
 
