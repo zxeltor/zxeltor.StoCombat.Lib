@@ -33,7 +33,7 @@ public class CombatLogParseSettings : INotifyPropertyChanged
     private bool _isRejectCombatWithNoPlayers = true;
     private bool _isRemoveEntityOutliers = true;
     private bool _isRemoveEntityOutliersNonPlayers;
-    private bool _isRemoveEntityOutliersPlayers;
+    private bool _isRemoveEntityOutliersPlayers = true;
     private CombatMapDetectionSettings? _mapDetectionSettings;
     private int _minInActiveInSeconds = 4;
     private string? _myCharacter;
