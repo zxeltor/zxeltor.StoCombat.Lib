@@ -24,24 +24,26 @@ public class CombatDataGridContext : DataGridContext<Combat>
     #region Constructors
 
     /// <inheritdoc />
-    public CombatDataGridContext() : base()
+    public CombatDataGridContext()
     {
     }
 
     #endregion
 
     #region Public Members
+
     /// <summary>
     ///     Get the default context from application settings, or create a new one.
     /// </summary>
-    /// <param name="name"></param>
-    /// <returns></returns>
-    public new static CombatDataGridContext? GetDefaultContext(string? serializedContextFromConfig)
+    /// <param name="serializedContextFromConfig">Serialized config string</param>
+    /// <returns>A context object</returns>
+    public static CombatDataGridContext? GetDefaultContext(string? serializedContextFromConfig)
     {
         try
         {
             if (!string.IsNullOrWhiteSpace(serializedContextFromConfig))
-                if (SerializationHelper.TryDeserializeString(serializedContextFromConfig, out CombatDataGridContext? context))
+                if (SerializationHelper.TryDeserializeString(serializedContextFromConfig,
+                        out CombatDataGridContext? context))
                     if (context != null)
                         return context;
         }
@@ -50,13 +52,12 @@ public class CombatDataGridContext : DataGridContext<Combat>
             Log.Error("Failed to deserialize map detection settings from app config.", e);
         }
 
-        var newConfig = new CombatDataGridContext()
+        var newConfig = new CombatDataGridContext
         {
             GridColumns =
             {
                 new DataGridColumnConfig(nameof(CombatEvent.OriginalFileName), isVisible: false),
                 new DataGridColumnConfig(nameof(CombatEvent.OriginalFileLineNumber), isVisible: false),
-                new DataGridColumnConfig(nameof(CombatEvent.OriginalHashCode), isVisible: false),
                 new DataGridColumnConfig(nameof(CombatEvent.IsOwnerModified), isVisible: false),
                 new DataGridColumnConfig(nameof(CombatEvent.Timestamp)),
 

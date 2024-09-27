@@ -5,41 +5,35 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.ComponentModel;
-using System.Configuration;
-using System.Reflection;
 using System.Runtime.CompilerServices;
-using log4net;
 
 namespace zxeltor.StoCombat.Lib.Parser;
 
-public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposable
+public class RealtimeCombatLogParseSettings : INotifyPropertyChanged
 {
     #region Private Fields
 
-    private int _announcementPlaybackVolumePercentage;
-
-    private readonly ApplicationSettingsBase? _applicationSettingsBase;
-    private readonly List<PropertyInfo>? _applicationSettingsBaseProperties;
-    private int _combatDurationPercentage = 1;
+    private int _announcementPlaybackVolumePercentage = 50;
     private string? _combatLogPath;
     private string _combatLogPathFilePattern = "combatlog*.log";
+    private int _howLongAfterNoCombatBeforeRemoveFromGridInSeconds;
     private int _howLongBeforeNewCombatInSeconds = 20;
     private int _howOftenParseLogsInSeconds = 3;
-    private int _howOftenPullDataFromLogFilesSeconds = 4;
-    private bool _isCombinePets;
-    private bool _isEnableInactiveTimeCalculations;
-    private bool _isIncludeAssistedKillsInAchievements;
-    private bool _isKeepPlayersInListAfterCombat;
-    private bool _isProcessKillingSpreeAnnouncements;
-    private bool _isProcessMultiKillAnnouncements;
-    private bool _isRemoveEntityOutliersNonPlayers;
-    private bool _isRemoveEntityOutliersPlayers;
-    private bool _isUnrealAnnouncementsEnabled;
-    private readonly ILog _log = LogManager.GetLogger(typeof(CombatLogParseSettings));
-    private int _minInActiveInSeconds = 4;
-    private int _multiKillWaitInSeconds;
+    private bool _isEnableInactiveTimeCalculations = true;
+    private bool _isIncludeAssistedKillsInAchievements = true;
+    private bool _isProcessKillingSpreeAnnouncements = true;
+    private bool _isProcessKillingSpreeSplash = true;
+    private bool _isProcessMiscAnnouncements = true;
+    private bool _isProcessMiscSplash = true;
+    private bool _isProcessMultiKillAnnouncements = true;
+    private bool _isProcessMultiKillSplash = true;
+    private bool _isUnrealAnnouncementsEnabled = true;
+    private int _minInActiveInSeconds = 6;
+    private int _multiKillWaitInSeconds = 4;
     private string? _myCharacter;
-    private readonly List<PropertyInfo>? _propertyInfoList;
+    private TimeSpan _timeSpanHowLongAfterNoCombatBeforeRemoveFromGrid = TimeSpan.Zero;
+    private TimeSpan _timeSpanHowLongBeforeNewCombat = TimeSpan.FromSeconds(20);
+    private TimeSpan _timeSpanHowOftenParseLogs = TimeSpan.FromSeconds(0);
 
     #endregion
 
@@ -50,40 +44,11 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
     /// </summary>
     public RealtimeCombatLogParseSettings()
     {
-        this._propertyInfoList = typeof(RealtimeCombatLogParseSettings).GetProperties().ToList();
-    }
-
-    public RealtimeCombatLogParseSettings(ApplicationSettingsBase? applicationSettingsBase) : this()
-    {
-        if (applicationSettingsBase == null) return;
-        if (this._propertyInfoList == null || this._propertyInfoList.Count == 0) return;
-
-        this._applicationSettingsBase = applicationSettingsBase;
-
-        this._applicationSettingsBaseProperties = this._applicationSettingsBase.GetType().GetProperties().ToList();
-
-        this._propertyInfoList.ForEach(combatParserProp =>
-        {
-            var appSettingProperty =
-                this._applicationSettingsBaseProperties.FirstOrDefault(appSetting =>
-                    appSetting.Name.Equals(combatParserProp.Name));
-
-            if (appSettingProperty != null)
-                combatParserProp.SetValue(this, appSettingProperty.GetValue(applicationSettingsBase));
-        });
-
-        this._applicationSettingsBase.PropertyChanged += this.ApplicationSettingsBaseOnPropertyChanged;
     }
 
     #endregion
 
     #region Public Properties
-
-    public bool IsCombinePets
-    {
-        get => this._isCombinePets;
-        set => this.SetField(ref this._isCombinePets, value);
-    }
 
     public bool IsEnableInactiveTimeCalculations
     {
@@ -97,16 +62,28 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
         set => this.SetField(ref this._isIncludeAssistedKillsInAchievements, value);
     }
 
-    public bool IsKeepPlayersInListAfterCombat
-    {
-        get => this._isKeepPlayersInListAfterCombat;
-        set => this.SetField(ref this._isKeepPlayersInListAfterCombat, value);
-    }
-
     public bool IsProcessKillingSpreeAnnouncements
     {
         get => this._isProcessKillingSpreeAnnouncements;
         set => this.SetField(ref this._isProcessKillingSpreeAnnouncements, value);
+    }
+
+    public bool IsProcessKillingSpreeSplash
+    {
+        get => this._isProcessKillingSpreeSplash;
+        set => this.SetField(ref this._isProcessKillingSpreeSplash, value);
+    }
+
+    public bool IsProcessMiscAnnouncements
+    {
+        get => this._isProcessMiscAnnouncements;
+        set => this.SetField(ref this._isProcessMiscAnnouncements, value);
+    }
+
+    public bool IsProcessMiscSplash
+    {
+        get => this._isProcessMiscSplash;
+        set => this.SetField(ref this._isProcessMiscSplash, value);
     }
 
     public bool IsProcessMultiKillAnnouncements
@@ -115,16 +92,10 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
         set => this.SetField(ref this._isProcessMultiKillAnnouncements, value);
     }
 
-    public bool IsRemoveEntityOutliersNonPlayers
+    public bool IsProcessMultiKillSplash
     {
-        get => this._isRemoveEntityOutliersNonPlayers;
-        set => this.SetField(ref this._isRemoveEntityOutliersNonPlayers, value);
-    }
-
-    public bool IsRemoveEntityOutliersPlayers
-    {
-        get => this._isRemoveEntityOutliersPlayers;
-        set => this.SetField(ref this._isRemoveEntityOutliersPlayers, value);
+        get => this._isProcessMultiKillSplash;
+        set => this.SetField(ref this._isProcessMultiKillSplash, value);
     }
 
     public bool IsUnrealAnnouncementsEnabled
@@ -139,10 +110,16 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
         set => this.SetField(ref this._announcementPlaybackVolumePercentage, value);
     }
 
-    public int CombatDurationPercentage
+
+    public int HowLongAfterNoCombatBeforeRemoveFromGridInSeconds
     {
-        get => this._combatDurationPercentage;
-        set => this.SetField(ref this._combatDurationPercentage, value);
+        get => this._howLongAfterNoCombatBeforeRemoveFromGridInSeconds;
+        set
+        {
+            this.SetField(ref this._howLongAfterNoCombatBeforeRemoveFromGridInSeconds, value);
+            this.TimeSpanHowLongAfterNoCombatBeforeRemoveFromGrid =
+                this.TimeSpanHowLongBeforeNewCombat + TimeSpan.FromSeconds(value);
+        }
     }
 
     /// <summary>
@@ -151,19 +128,21 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
     public int HowLongBeforeNewCombatInSeconds
     {
         get => this._howLongBeforeNewCombatInSeconds;
-        set => this.SetField(ref this._howLongBeforeNewCombatInSeconds, value);
+        set
+        {
+            this.SetField(ref this._howLongBeforeNewCombatInSeconds, value);
+            this.TimeSpanHowLongBeforeNewCombat = TimeSpan.FromSeconds(value);
+        }
     }
 
     public int HowOftenParseLogsInSeconds
     {
         get => this._howOftenParseLogsInSeconds;
-        set => this.SetField(ref this._howOftenParseLogsInSeconds, value);
-    }
-
-    public int HowOftenPullDataFromLogFilesSeconds
-    {
-        get => this._howOftenPullDataFromLogFilesSeconds;
-        set => this.SetField(ref this._howOftenPullDataFromLogFilesSeconds, value);
+        set
+        {
+            this.SetField(ref this._howOftenParseLogsInSeconds, value);
+            this.TimeSpanHowOftenParseLogs = TimeSpan.FromSeconds(value);
+        }
     }
 
     public int MinInActiveInSeconds
@@ -203,32 +182,44 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
         set => this.SetField(ref this._myCharacter, value);
     }
 
+    public TimeSpan TimeSpanHowLongAfterNoCombatBeforeRemoveFromGrid
+    {
+        get => this._timeSpanHowLongAfterNoCombatBeforeRemoveFromGrid;
+        set => this.SetField(ref this._timeSpanHowLongAfterNoCombatBeforeRemoveFromGrid, value);
+    }
+
+    public TimeSpan TimeSpanHowLongBeforeNewCombat
+    {
+        get => this._timeSpanHowLongBeforeNewCombat;
+        set => this.SetField(ref this._timeSpanHowLongBeforeNewCombat, value);
+    }
+
+    public TimeSpan TimeSpanHowOftenParseLogs
+    {
+        get => this._timeSpanHowOftenParseLogs;
+        set => this.SetField(ref this._timeSpanHowOftenParseLogs, value);
+    }
+
     #endregion
 
     #region Public Members
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    #region Overrides of Object
+
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        return
+            $"Path={this.CombatLogPath}, File={this.CombatLogPathFilePattern}, HowLong={this.HowLongBeforeNewCombatInSeconds}";
+    }
+
+    #endregion
+
     #endregion
 
     #region Other Members
-
-    private void ApplicationSettingsBaseOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(e.PropertyName)) return;
-        if (this._propertyInfoList == null || this._propertyInfoList.Count == 0) return;
-        if (this._applicationSettingsBase == null || this._applicationSettingsBaseProperties == null ||
-            this._applicationSettingsBaseProperties.Count == 0) return;
-
-        var appPropertyInfo =
-            this._applicationSettingsBaseProperties.FirstOrDefault(setting => setting.Name.Equals(e.PropertyName));
-
-        var thisPropertyInfo = this._propertyInfoList.FirstOrDefault(prop => prop.Name.Equals(e.PropertyName));
-
-        if (appPropertyInfo == null || thisPropertyInfo == null) return;
-
-        thisPropertyInfo.SetValue(this, appPropertyInfo.GetValue(this._applicationSettingsBase));
-    }
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
@@ -241,24 +232,6 @@ public class RealtimeCombatLogParseSettings : INotifyPropertyChanged, IDisposabl
         field = value;
         this.OnPropertyChanged(propertyName);
         return true;
-    }
-
-    #endregion
-
-    #region Overrides of Object
-
-    /// <inheritdoc />
-    public override string ToString()
-    {
-        return
-            $"Path={this.CombatLogPath}, File={this.CombatLogPathFilePattern}, HowLong={this.HowLongBeforeNewCombatInSeconds}";
-    }
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (this._applicationSettingsBase != null)
-            this._applicationSettingsBase.PropertyChanged -= this.ApplicationSettingsBaseOnPropertyChanged;
     }
 
     #endregion

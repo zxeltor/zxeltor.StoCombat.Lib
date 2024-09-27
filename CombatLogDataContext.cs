@@ -6,7 +6,6 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Configuration;
 using System.Runtime.CompilerServices;
 using zxeltor.StoCombat.Lib.Model.CombatLog;
 using zxeltor.StoCombat.Lib.Parser;
@@ -18,27 +17,10 @@ public class CombatLogDataContext : INotifyPropertyChanged
     #region Private Fields
 
     private ObservableCollection<Combat>? _combatList;
-
     private CombatLogParseSettings? _combatLogParseSettings;
-
     private Combat? _selectedCombat;
-
     private CombatEntity? _selectedCombatEntity;
-
     private CombatEvent? _selectedCombatEvent;
-
-    #endregion
-
-    #region Constructors
-
-    public CombatLogDataContext()
-    {
-    }
-
-    public CombatLogDataContext(ApplicationSettingsBase applicationSettingsBase)
-    {
-        this._combatLogParseSettings = new CombatLogParseSettings(applicationSettingsBase);
-    }
 
     #endregion
 
@@ -79,14 +61,6 @@ public class CombatLogDataContext : INotifyPropertyChanged
     #region Public Members
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
-    public bool TryParseCombatLogs()
-    {
-        var result = false;
-
-
-        return result;
-    }
 
     #endregion
 

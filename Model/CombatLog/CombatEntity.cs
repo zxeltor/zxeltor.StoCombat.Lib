@@ -10,56 +10,43 @@ using System.Text;
 using Humanizer;
 using Newtonsoft.Json;
 using zxeltor.StoCombat.Lib.Parser;
+using zxeltor.Types.Lib.Collections;
 
 namespace zxeltor.StoCombat.Lib.Model.CombatLog;
 
 /// <summary>
 ///     This object represents a Player or Non-Player entity from the STO combat logs.
 /// </summary>
-public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
+public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity, IEquatable<CombatEntity>
 {
     #region Private Fields
 
     private List<CombatEventType>? _combatEventTypeListForEntity;
-
     private List<CombatPetEventType>? _combatEventTypeListForEntityPets;
-
     private List<CombatEntityDeadZone>? _deadZones;
-
     private int? _entityCombatAttacks;
-
     private TimeSpan? _entityCombatDuration;
-
     private DateTime? _entityCombatEnd;
-
     private TimeSpan? _entityCombatInActive;
-
     private int? _entityCombatKills;
-
     private DateTime? _entityCombatStart;
-
     private double? _entityMagnitudePerSecond;
-
     private double? _entityMaxMagnitude;
-
     private double? _entityTotalMagnitude;
-
     private bool _isCombinePets = true;
-
     private bool _isEnableInactiveTimeCalculations = true;
-
     private bool _isObjectLocked;
-
     private int? _minInActiveInSeconds;
-
     private double? _petsMagnitudePerSecond;
-
     private double? _petsMaxMagnitude;
-
     private double? _petsTotalMagnitude;
-    private Type _rejectAbleType;
     private bool _rejected;
     private string? _rejectionReason;
+
+    /// <summary>
+    ///     A list of combat events for this entity.
+    /// </summary>
+    private SyncNotifyCollection<CombatEvent> _syncedCombatEventList = [];
 
     #endregion
 
@@ -82,8 +69,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
         this.OwnerDisplay = combatEvent.OwnerDisplay;
 
         // Determine if this entity is a player or non-player.
-        this.IsPlayer = !string.IsNullOrWhiteSpace(this.OwnerInternal) &&
-                        (this.OwnerInternal.StartsWith("P[") ? true : false);
+        this.IsPlayer = !string.IsNullOrWhiteSpace(this.OwnerInternal) && this.OwnerInternal.StartsWith("P[");
 
         this.IsCombinePets = combatLogParseSettings.IsCombinePets;
         this.IsEnableInactiveTimeCalculations = combatLogParseSettings.IsEnableInactiveTimeCalculations;
@@ -133,9 +119,9 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityCombatEnd != null && this._isObjectLocked)
                 return this._entityCombatEnd;
 
-            return this._entityCombatEnd = this._combatEventList.Count == 0
+            return this._entityCombatEnd = this.CombatEventsList.Count == 0
                 ? null // This should be possible, but checking for it anyway.
-                : this._combatEventList.Last().Timestamp;
+                : this.CombatEventsList.Max(evt => evt.Timestamp);
         }
         set => this._entityCombatEnd = value;
     }
@@ -151,9 +137,9 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityCombatStart != null && this._isObjectLocked)
                 return this._entityCombatStart;
 
-            return this._entityCombatStart = this._combatEventList.Count == 0
+            return this._entityCombatStart = this.CombatEventsList.Count == 0
                 ? null // This should be possible, but checking for it anyway.
-                : this._combatEventList.First().Timestamp;
+                : this.CombatEventsList.Min(evt => evt.Timestamp);
         }
         set => this._entityCombatStart = value;
     }
@@ -168,7 +154,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityMagnitudePerSecond.HasValue && this._isObjectLocked)
                 return this._entityMagnitudePerSecond.Value;
 
-            var entityEvents = this._combatEventList
+            var entityEvents = this.CombatEventsList
                 .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (entityEvents.Count == 0 || this.EntityCombatDuration == null)
@@ -194,7 +180,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityMaxMagnitude.HasValue && this._isObjectLocked)
                 return this._entityMaxMagnitude.Value;
 
-            var entityEvents = this._combatEventList
+            var entityEvents = this.CombatEventsList
                 .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (entityEvents.Count == 0) return this._entityMaxMagnitude = 0;
@@ -214,7 +200,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityTotalMagnitude.HasValue && this._isObjectLocked)
                 return this._entityTotalMagnitude.Value;
 
-            var entityEvents = this._combatEventList
+            var entityEvents = this.CombatEventsList
                 .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (entityEvents.Count == 0) return this._entityTotalMagnitude = 0;
@@ -234,7 +220,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._petsMagnitudePerSecond.HasValue && this._isObjectLocked)
                 return this._petsMagnitudePerSecond.Value;
 
-            var petEvents = this._combatEventList.Where(ev =>
+            var petEvents = this.CombatEventsList.Where(ev =>
                 ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (petEvents.Count == 0 || this.EntityCombatDuration == null)
@@ -260,7 +246,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._petsMaxMagnitude.HasValue && this._isObjectLocked)
                 return this._petsMaxMagnitude.Value;
 
-            var petEvents = this._combatEventList.Where(ev =>
+            var petEvents = this.CombatEventsList.Where(ev =>
                 ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (petEvents.Count == 0) return this._petsMaxMagnitude = 0;
@@ -280,7 +266,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._petsTotalMagnitude.HasValue && this._isObjectLocked)
                 return this._petsTotalMagnitude.Value;
 
-            var petEvents = this._combatEventList.Where(ev =>
+            var petEvents = this.CombatEventsList.Where(ev =>
                 ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
             if (petEvents.Count == 0) return this._petsTotalMagnitude = 0;
@@ -324,7 +310,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._entityCombatKills != null && this._isObjectLocked)
                 return this._entityCombatKills;
 
-            var killList = this._combatEventList
+            var killList = this.CombatEventsList
                 .Where(ev => ev.Flags.Contains("kill", StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
@@ -342,8 +328,6 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
         set => this.SetField(ref this._minInActiveInSeconds, value);
     }
 
-    public IReadOnlyList<CombatEvent> CombatEventsList => this._combatEventList;
-
     /// <summary>
     ///     A list of timespans where the Player is considered Inactive.
     /// </summary>
@@ -351,11 +335,11 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
     {
         get
         {
-            //if (this._deadZones != null && this._isObjectLocked)
-            //    return this._deadZones;
-
             if (!this.IsEnableInactiveTimeCalculations || this.CombatEventsList.Count == 0)
                 return this._deadZones = new List<CombatEntityDeadZone>(0);
+
+            if (this._deadZones != null && this._isObjectLocked)
+                return this._deadZones;
 
             var deadZones = new List<CombatEntityDeadZone>();
 
@@ -364,7 +348,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
                 ? TimeSpan.FromSeconds(this.MinInActiveInSeconds.Value)
                 : TimeSpan.FromSeconds(1);
 
-            var lastTimestamp = this.CombatEventsList.First().Timestamp;
+            var lastTimestamp = this.CombatEventsList.Min(evt => evt.Timestamp);
 
             foreach (var combatEvent in this.CombatEventsList)
             {
@@ -382,11 +366,6 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
     }
 
     /// <summary>
-    ///     A list of combat events for this entity.
-    /// </summary>
-    private List<CombatEvent> _combatEventList { get; } = new();
-
-    /// <summary>
     ///     Get a list of event types specific to the Player or Non-Player
     /// </summary>
     [JsonIgnore]
@@ -397,9 +376,9 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._combatEventTypeListForEntity != null && this._isObjectLocked)
                 return this._combatEventTypeListForEntity;
 
-            if (this._combatEventList.All(ev => ev.IsOwnerPetEvent)) return new List<CombatEventType>(0);
+            if (this.CombatEventsList.All(ev => ev.IsOwnerPetEvent)) return new List<CombatEventType>(0);
 
-            this._combatEventTypeListForEntity = this._combatEventList.Where(ev => !ev.IsOwnerPetEvent)
+            this._combatEventTypeListForEntity = this.CombatEventsList.Where(ev => !ev.IsOwnerPetEvent)
                 .GroupBy(ev => new { ev.EventInternal, ev.EventDisplay })
                 .OrderBy(evg => evg.Key.EventDisplay)
                 .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive)).ToList();
@@ -419,11 +398,11 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             if (this._combatEventTypeListForEntityPets != null && this._isObjectLocked)
                 return this._combatEventTypeListForEntityPets;
 
-            if (!this._combatEventList.Any(ev => ev.IsOwnerPetEvent)) return new List<CombatPetEventType>();
+            if (!this.CombatEventsList.Any(ev => ev.IsOwnerPetEvent)) return new List<CombatPetEventType>();
 
             if (this.IsCombinePets)
             {
-                var myEvents = this._combatEventList.Where(ev => ev.IsOwnerPetEvent)
+                var myEvents = this.CombatEventsList.Where(ev => ev.IsOwnerPetEvent)
                     .GroupBy(ev => new { ev.SourceDisplay, ev.EventInternal, ev.EventDisplay })
                     .OrderBy(evg => evg.Key.EventDisplay)
                     .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive))
@@ -436,7 +415,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
             }
             else
             {
-                var myEvents = this._combatEventList.Where(ev => ev.IsOwnerPetEvent)
+                var myEvents = this.CombatEventsList.Where(ev => ev.IsOwnerPetEvent)
                     .GroupBy(ev => new { ev.SourceInternal, ev.EventInternal, ev.EventDisplay })
                     .OrderBy(evg => evg.Key.EventDisplay)
                     .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive))
@@ -500,6 +479,12 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
         set => this.SetField(ref this._rejectionReason, value);
     }
 
+    public SyncNotifyCollection<CombatEvent> CombatEventsList
+    {
+        get => this._syncedCombatEventList;
+        set => this.SetField(ref this._syncedCombatEventList, value);
+    }
+
     /// <summary>
     ///     A humanized string base on combat duration. (<see cref="EntityCombatEnd" /> - <see cref="EntityCombatStart" />)
     /// </summary>
@@ -549,8 +534,20 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
         if (this._isObjectLocked)
             throw new Exception("Trying to add new events to a locked object");
 
-        this._combatEventList.Add(combatEvent);
+        this.CombatEventsList.Add(combatEvent);
     }
+
+    #region Equality members
+
+    /// <inheritdoc />
+    public bool Equals(CombatEntity? other)
+    {
+        if (ReferenceEquals(null, other)) return false;
+        if (ReferenceEquals(this, other)) return true;
+        return this.OwnerInternal == other.OwnerInternal;
+    }
+
+    #endregion
 
     /// <summary>
     ///     Lock the class from accepting new combat events.
@@ -573,7 +570,7 @@ public class CombatEntity : INotifyPropertyChanged, IRejectAbleEntity
     public override string ToString()
     {
         return
-            $"Owner={this.OwnerDisplay}, Player={this.IsPlayer}, EntityCombatKills={this.EntityCombatKills}, EntityCombatDuration={(this.EntityCombatEnd.Value - this.EntityCombatStart.Value).Humanize()}, Start={this.EntityCombatStart}, End={this.EntityCombatEnd}";
+            $"Owner={this.OwnerDisplay}, Player={this.IsPlayer}, EntityCombatKills={this.EntityCombatKills}, EntityCombatDuration={this.EntityCombatDuration:g}, Start={this.EntityCombatStart}, End={this.EntityCombatEnd}";
     }
 
     #endregion

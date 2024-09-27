@@ -17,11 +17,11 @@ public class CombatEvent : IEquatable<CombatEvent>
 {
     #region Static Fields and Constants
 
-    private static readonly Regex RegexPlayerInternalStripper =
-        new(@"P\[[\w#]+@[\w#]+\s+(?<stripped_name>[\S ]+@[\S]+)\]", RegexOptions.Compiled);
-
     private static readonly Regex RegexNonPlayerInternalStripper =
         new(@"C\[[\w#]+\s+(?<stripped_name>[\w#]+)]", RegexOptions.Compiled);
+
+    private static readonly Regex RegexPlayerInternalStripper =
+        new(@"P\[[\w#]+@[\w#]+\s+(?<stripped_name>[\S ]+@[\S]+)\]", RegexOptions.Compiled);
 
     #endregion
 
@@ -60,36 +60,6 @@ public class CombatEvent : IEquatable<CombatEvent>
     #region Public Properties
 
     /// <summary>
-    ///     The source file where this entry came from.
-    /// </summary>
-    public string OriginalFileName { get; set; }
-
-    /// <summary>
-    ///     The line from the source file.
-    /// </summary>
-    public long OriginalFileLineNumber { get; set; }
-
-    /// <summary>
-    ///     The file line number where this entry originated from.
-    /// </summary>
-    public string OriginalFileLineString { get; set; }
-
-    /// <summary>
-    ///     A hashcode derived from properties in this class. An attempt to create a unique id.
-    /// </summary>
-    public int OriginalHashCode { get; set; }
-
-    /// <summary>
-    ///     If true this event was from a Player. False it was for a Non-Player.
-    /// </summary>
-    public bool IsOwnerPlayer { get; set; }
-
-    /// <summary>
-    ///     True if the damage from this event came from an entities pet. False otherwise.
-    /// </summary>
-    public bool IsOwnerPetEvent { get; set; }
-
-    /// <summary>
     ///     True if this event had no owner assigned to it originally. False otherwise.
     ///     <para>
     ///         If true, this means the target related information was used to populate the owner information. Assuming this
@@ -99,6 +69,22 @@ public class CombatEvent : IEquatable<CombatEvent>
     public bool IsOwnerModified { get; set; }
 
     /// <summary>
+    ///     True if the damage from this event came from an entities pet. False otherwise.
+    /// </summary>
+    public bool IsOwnerPetEvent { get; set; }
+
+
+    /// <summary>
+    ///     If true this event was from a Player. False it was for a Non-Player.
+    /// </summary>
+    public bool IsOwnerPlayer { get; set; }
+
+    /// <summary>
+    ///     True if the target is a non-player. False otherwise.
+    /// </summary>
+    public bool IsTargetPlayer { get; set; }
+
+    /// <summary>
     ///     Timestamp
     ///     <para>
     ///         This was a field parsed directly from the original CSV log file entry.
@@ -106,6 +92,66 @@ public class CombatEvent : IEquatable<CombatEvent>
     ///     </para>
     /// </summary>
     public DateTime Timestamp { get; set; }
+
+    /// <summary>
+    ///     Magnitude
+    ///     <para>
+    ///         This was a field parsed directly from the original CSV log file entry.
+    ///         This was entry 10 in the CSV. Entries are zero based.
+    ///     </para>
+    /// </summary>
+    public double Magnitude { get; set; }
+
+    /// <summary>
+    ///     Base magnitude
+    ///     <para>
+    ///         This was a field parsed directly from the original CSV log file entry.
+    ///         This was entry 11 in the CSV. Entries are zero based.
+    ///     </para>
+    /// </summary>
+    public double MagnitudeBase { get; set; }
+
+    /// <summary>
+    ///     The line from the source file.
+    /// </summary>
+    public long OriginalFileLineNumber { get; set; }
+
+    /// <summary>
+    ///     Display name of event
+    ///     <para>
+    ///         This was a field parsed directly from the original CSV log file entry.
+    ///         This was entry 6 in the CSV. Entries are zero based.
+    ///     </para>
+    /// </summary>
+    public string EventDisplay { get; set; }
+
+    /// <summary>
+    ///     Internal name of event
+    ///     <para>
+    ///         This was a field parsed directly from the original CSV log file entry.
+    ///         This was entry 7 in the CSV. Entries are zero based.
+    ///     </para>
+    /// </summary>
+    public string EventInternal { get; set; }
+
+    /// <summary>
+    ///     Flags (Critical, Flank, Dodge, Miss etc.)
+    ///     <para>
+    ///         This was a field parsed directly from the original CSV log file entry.
+    ///         This was entry 9 in the CSV. Entries are zero based.
+    ///     </para>
+    /// </summary>
+    public string Flags { get; set; }
+
+    /// <summary>
+    ///     The file line number where this entry originated from.
+    /// </summary>
+    public string OriginalFileLineString { get; set; }
+
+    /// <summary>
+    ///     The source file where this entry came from.
+    /// </summary>
+    public string OriginalFileName { get; set; }
 
     /// <summary>
     ///     Display name of owner.
@@ -172,32 +218,9 @@ public class CombatEvent : IEquatable<CombatEvent>
     public string TargetInternal { get; set; }
 
     /// <summary>
-    ///     True if the target is a non-player. False otherwise.
-    /// </summary>
-    public bool IsTargetPlayer { get; set; }
-
-    /// <summary>
     ///     The TargetInternal id stripped of it's ID wrapper.
     /// </summary>
     public string TargetInternalStripped { get; set; }
-
-    /// <summary>
-    ///     Display name of event
-    ///     <para>
-    ///         This was a field parsed directly from the original CSV log file entry.
-    ///         This was entry 6 in the CSV. Entries are zero based.
-    ///     </para>
-    /// </summary>
-    public string EventDisplay { get; set; }
-
-    /// <summary>
-    ///     Internal name of event
-    ///     <para>
-    ///         This was a field parsed directly from the original CSV log file entry.
-    ///         This was entry 7 in the CSV. Entries are zero based.
-    ///     </para>
-    /// </summary>
-    public string EventInternal { get; set; }
 
     /// <summary>
     ///     Type (Shield or Plasma/Antiproton etc.)
@@ -208,56 +231,15 @@ public class CombatEvent : IEquatable<CombatEvent>
     /// </summary>
     public string Type { get; set; }
 
-    /// <summary>
-    ///     Flags (Critical, Flank, Dodge, Miss etc.)
-    ///     <para>
-    ///         This was a field parsed directly from the original CSV log file entry.
-    ///         This was entry 9 in the CSV. Entries are zero based.
-    ///     </para>
-    /// </summary>
-    public string Flags { get; set; }
-
-    /// <summary>
-    ///     Magnitude
-    ///     <para>
-    ///         This was a field parsed directly from the original CSV log file entry.
-    ///         This was entry 10 in the CSV. Entries are zero based.
-    ///     </para>
-    /// </summary>
-    public double Magnitude { get; set; }
-
-    /// <summary>
-    ///     Base magnitude
-    ///     <para>
-    ///         This was a field parsed directly from the original CSV log file entry.
-    ///         This was entry 11 in the CSV. Entries are zero based.
-    ///     </para>
-    /// </summary>
-    public double MagnitudeBase { get; set; }
-
     #endregion
 
     #region Public Members
-
-    /// <inheritdoc />
-    public bool Equals(CombatEvent? other)
-    {
-        return this.GetHashCode() == other?.GetHashCode();
-    }
 
     /// <inheritdoc />
     public override string ToString()
     {
         return
             $"Timestamp={this.Timestamp:s}, Owner={this.OwnerInternal}, Target={this.TargetInternal}, {this.EventInternal}, {this.Type}";
-    }
-
-    /// <inheritdoc />
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(this.Timestamp, this.OwnerInternal, this.SourceInternal, this.TargetInternal,
-            this.EventInternal, this.Type,
-            this.Flags, this.Magnitude);
     }
 
     #endregion
@@ -327,7 +309,7 @@ public class CombatEvent : IEquatable<CombatEvent>
         this.Magnitude = magnitudeResult;
         this.MagnitudeBase = magnitudeBaseResult;
 
-        this.OriginalHashCode = this.GetHashCode();
+        //this.OriginalHashCode = this.GetHashCode();
 
         // If no owner is specified, we assume the target is the owner, and assign the target as the owner.
         if (string.IsNullOrWhiteSpace(this.OwnerInternal))
@@ -338,11 +320,12 @@ public class CombatEvent : IEquatable<CombatEvent>
             this.IsOwnerModified = true;
         }
 
-        if (!string.IsNullOrWhiteSpace(this.SourceDisplay) && !string.IsNullOrWhiteSpace(this.SourceInternal) && !this.SourceInternal.Equals("*"))
+        if (!string.IsNullOrWhiteSpace(this.SourceDisplay) && !string.IsNullOrWhiteSpace(this.SourceInternal) &&
+            !this.SourceInternal.Equals("*"))
         {
             this.IsOwnerPetEvent = true;
 
-            this.StripInternalId(this.SourceInternal, out var sourceInternalIdStripped, out var sourceInternalIsPlayer);
+            this.StripInternalId(this.SourceInternal, out var sourceInternalIdStripped, out _);
             this.SourceInternalStripped = sourceInternalIdStripped;
         }
 
@@ -357,7 +340,8 @@ public class CombatEvent : IEquatable<CombatEvent>
         if (!string.IsNullOrWhiteSpace(this.TargetDisplay) && !string.IsNullOrWhiteSpace(this.TargetInternal) &&
             !this.TargetInternal.Equals("*"))
         {
-            this.StripInternalId(this.TargetInternal, out var targetInternalIdToStripped, out var targetInternalIsPlayer);
+            this.StripInternalId(this.TargetInternal, out var targetInternalIdToStripped,
+                out var targetInternalIsPlayer);
             this.IsTargetPlayer = targetInternalIsPlayer;
             this.TargetInternalStripped = targetInternalIdToStripped;
         }
@@ -400,7 +384,6 @@ public class CombatEvent : IEquatable<CombatEvent>
             }
 
             if (internalIdToStrip.StartsWith("C[", StringComparison.CurrentCultureIgnoreCase))
-            {
                 if (RegexNonPlayerInternalStripper.IsMatch(internalIdToStrip))
                 {
                     var groups = RegexNonPlayerInternalStripper.Match(internalIdToStrip).Groups;
@@ -411,7 +394,6 @@ public class CombatEvent : IEquatable<CombatEvent>
                         return;
                     }
                 }
-            }
 
             //this._log.Debug($"Failed to parse internal id: \"{internalIdToStrip}\"");
         }
@@ -421,6 +403,49 @@ public class CombatEvent : IEquatable<CombatEvent>
         }
 
         strippedInternalId = internalIdToStrip;
+    }
+
+    #endregion
+
+    #region Equality members
+
+    /// <inheritdoc />
+    public bool Equals(CombatEvent? other)
+    {
+        if (ReferenceEquals(null, other)) return false;
+        if (ReferenceEquals(this, other)) return true;
+        return this.Timestamp.Equals(other.Timestamp) && this.OwnerInternal == other.OwnerInternal &&
+               this.SourceInternal == other.SourceInternal &&
+               this.SourceInternalStripped == other.SourceInternalStripped &&
+               this.TargetInternal == other.TargetInternal && this.EventInternal == other.EventInternal &&
+               this.Type == other.Type && this.Flags == other.Flags && this.Magnitude.Equals(other.Magnitude) &&
+               this.MagnitudeBase.Equals(other.MagnitudeBase);
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj)
+    {
+        if (ReferenceEquals(null, obj)) return false;
+        if (ReferenceEquals(this, obj)) return true;
+        if (obj.GetType() != this.GetType()) return false;
+        return this.Equals((CombatEvent)obj);
+    }
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        var hashCode = new HashCode();
+        hashCode.Add(this.Timestamp);
+        hashCode.Add(this.OwnerInternal);
+        hashCode.Add(this.SourceInternal);
+        hashCode.Add(this.SourceInternalStripped);
+        hashCode.Add(this.TargetInternal);
+        hashCode.Add(this.EventInternal);
+        hashCode.Add(this.Type);
+        hashCode.Add(this.Flags);
+        hashCode.Add(this.Magnitude);
+        hashCode.Add(this.MagnitudeBase);
+        return hashCode.ToHashCode();
     }
 
     #endregion

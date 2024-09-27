@@ -10,6 +10,7 @@ using log4net;
 using zxeltor.StoCombat.Lib.Model.CombatLog;
 using zxeltor.StoCombat.Lib.Model.CombatMap;
 using zxeltor.StoCombat.Lib.Parser;
+using zxeltor.Types.Lib.Collections;
 using zxeltor.Types.Lib.Helpers;
 using zxeltor.Types.Lib.Result;
 
@@ -38,10 +39,10 @@ public static class ParserHelper
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     public static CombatLogParserResult TryGetCombatList(CombatLogParseSettings combatLogParseSettings,
-        out List<Combat>? finalCombatListResult)
+        out SyncNotifyCollection<Combat>? finalCombatListResult)
     {
         var resultFinal = new CombatLogParserResult();
-        finalCombatListResult = new List<Combat>();
+        finalCombatListResult = new SyncNotifyCollection<Combat>();
 
         var parseStartTimeUtc = DateTime.UtcNow;
 
@@ -53,24 +54,22 @@ public static class ParserHelper
 
         var resultCombatList = TryGetCombatListFromCombatEvents(combatLogParseSettings,
             combatEventListOrderedByTimestamp,
-            out var combatListResult);
+            ref finalCombatListResult);
         resultFinal.MergeResult(resultCombatList);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        finalCombatListResult = combatListResult;
-
-        var resultPostProcessing = TryApplyCombatListPostProcessing(combatLogParseSettings, finalCombatListResult);
+        var resultPostProcessing = TryApplyCombatListPostProcessing(combatLogParseSettings, ref finalCombatListResult);
         resultFinal.MergeResult(resultPostProcessing);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        finalCombatListResult.ForEach(combat => combat.LockObject());
+        finalCombatListResult.ToList().ForEach(combat => combat.LockObject());
 
-        var eventsCount = combatListResult.Sum(combat => combat.AllCombatEvents.Count);
+        var eventsCount = finalCombatListResult.Sum(combat => combat.AllCombatEvents.Count);
         var howFarBackInTime = TimeSpan.FromHours(combatLogParseSettings.HowFarBackForCombatInHours);
         var completionMessage =
-            $"Successfully parsed \"{combatListResult.Count}\" combats from \"{eventsCount}\" events from \"{resultFinal.StoCombatLogFiles.Count}\" files for the past \"{howFarBackInTime.TotalHours}\" hours.";
+            $"Successfully parsed \"{finalCombatListResult.Count}\" combats from \"{eventsCount}\" events from \"{resultFinal.StoCombatLogFiles.Count}\" files for the past \"{howFarBackInTime.TotalHours}\" hours.";
         Log.Debug(completionMessage);
         resultFinal.AddMessage(completionMessage);
 
@@ -94,10 +93,10 @@ public static class ParserHelper
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     public static CombatLogParserResult TryGetCombatListFromFiles(CombatLogParseSettings combatLogParseSettings,
-        List<string> filesToParse, bool isJsonFileList, out List<Combat>? finalCombatListResult)
+        List<string> filesToParse, bool isJsonFileList, out SyncNotifyCollection<Combat>? finalCombatListResult)
     {
         var resultFinal = new CombatLogParserResult();
-        finalCombatListResult = new List<Combat>();
+        finalCombatListResult = new SyncNotifyCollection<Combat>();
 
         var resultEvents = isJsonFileList
             ? TryGetCombatEventsListFromCombatJsonFileList(filesToParse, out var combatEventListOrderedByTimestamp)
@@ -109,28 +108,26 @@ public static class ParserHelper
 
         var resultCombatList = TryGetCombatListFromCombatEvents(combatLogParseSettings,
             combatEventListOrderedByTimestamp,
-            out var combatListResult);
+            ref finalCombatListResult);
         resultFinal.MergeResult(resultCombatList);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        finalCombatListResult = combatListResult;
-
-        var resultPostProcessing = TryApplyCombatListPostProcessing(combatLogParseSettings, finalCombatListResult);
+        var resultPostProcessing = TryApplyCombatListPostProcessing(combatLogParseSettings, ref finalCombatListResult);
         resultFinal.MergeResult(resultPostProcessing);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        finalCombatListResult.ForEach(combat =>
+        finalCombatListResult.ToList().ForEach(combat =>
         {
             combat.ImportedDate = DateTime.Now;
             combat.LockObject();
         });
 
-        var eventsCount = combatListResult.Sum(combat => combat.AllCombatEvents.Count);
+        var eventsCount = finalCombatListResult.Sum(combat => combat.AllCombatEvents.Count);
         var howFarBackInTime = TimeSpan.FromHours(combatLogParseSettings.HowFarBackForCombatInHours);
         var completionMessage =
-            $"Successfully parsed \"{combatListResult.Count}\" combats from \"{eventsCount}\" events from \"{resultFinal.StoCombatLogFiles.Count}\" files for the past \"{howFarBackInTime.TotalHours}\" hours.";
+            $"Successfully parsed \"{finalCombatListResult.Count}\" combats from \"{eventsCount}\" events from \"{resultFinal.StoCombatLogFiles.Count}\" files for the past \"{howFarBackInTime.TotalHours}\" hours.";
         Log.Debug(completionMessage);
         resultFinal.AddMessage(completionMessage);
 
@@ -142,11 +139,13 @@ public static class ParserHelper
     ///     <para>Note: If there's only one log found, it won't be purged.</para>
     /// </summary>
     /// <param name="combatLogParseSettings">Parser settings</param>
+    /// <param name="howLongToKeepLogsInDays">To long to keep the logs in days</param>
     /// <param name="filesPurged">A list of files purged.</param>
     /// <returns>
     ///     <see cref="Result" />
     /// </returns>
     public static Result TryPurgeCombatLogFolder(CombatLogParseSettings combatLogParseSettings,
+        int howLongToKeepLogsInDays,
         out List<string> filesPurged)
     {
         filesPurged = [];
@@ -177,7 +176,7 @@ public static class ParserHelper
                 if (fileInfo.IsReadOnly) return;
 
                 if (DateTime.Now - fileInfo.LastWriteTime <=
-                    TimeSpan.FromDays(combatLogParseSettings.HowLongToKeepLogsInDays)) return;
+                    TimeSpan.FromDays(howLongToKeepLogsInDays)) return;
 
                 File.Delete(fileInfo.FullName);
                 tmpFilesPurged.Add(fileInfo.Name);
@@ -198,6 +197,74 @@ public static class ParserHelper
     #endregion
 
     #region Other Members
+
+    private static bool CombatsHaveMatchingPlayers(Combat combat, Combat previousCombat)
+    {
+        return combat.PlayerEntities.All(player => previousCombat.PlayerEntities.Contains(player));
+    }
+
+    private static bool CombatsHaveMatchingUniqueEntities(Combat combat, Combat previousCombat)
+    {
+        var combatEntities = combat.UniqueEntityIds?
+            .Where(entity => !string.IsNullOrWhiteSpace(entity.Id))
+            .Select(entity => entity.Id)
+            .Union(combat.UniqueEntityIds.Where(entity => !string.IsNullOrWhiteSpace(entity.Label))
+                .Select(entity => entity.Label))
+            .Distinct();
+
+        var previousCombatEntities = previousCombat.UniqueEntityIds?
+            .Where(entity => !string.IsNullOrWhiteSpace(entity.Id))
+            .Select(entity => entity.Id)
+            .Union(previousCombat.UniqueEntityIds.Where(entity => !string.IsNullOrWhiteSpace(entity.Label))
+                .Select(entity => entity.Label))
+            .Distinct();
+
+        if(combatEntities == null || previousCombatEntities == null) return false;
+
+        return combatEntities.Any(ent => previousCombatEntities.Contains(ent));
+    }
+
+    private static string? DetermineCombinedMapName(CombatLogParseSettings parserSettings, Combat combat,
+        Combat previousCombat)
+    {
+        if (combat.Map.Equals(previousCombat.Map))
+            return previousCombat.Map;
+
+        CombatMap? genericGroundMap = null;
+        CombatMap? genericSpaceMap = null;
+
+        if (parserSettings.MapDetectionSettings != null)
+        {
+            genericSpaceMap = parserSettings.MapDetectionSettings.GenericSpaceMap;
+            genericGroundMap = parserSettings.MapDetectionSettings.GenericSpaceMap;
+        }
+
+        var combatIsGenericMap = false;
+        var lastCombatIsGenericMap = false;
+
+        if (genericGroundMap != null && combat.Map!.Equals(genericGroundMap.Name))
+            combatIsGenericMap = true;
+        else if (genericSpaceMap != null && combat.Map!.Equals(genericSpaceMap.Name)) combatIsGenericMap = true;
+
+        if (genericGroundMap != null && previousCombat.Map!.Equals(genericGroundMap.Name))
+            lastCombatIsGenericMap = true;
+        else if (genericSpaceMap != null && previousCombat.Map!.Equals(genericSpaceMap.Name))
+            lastCombatIsGenericMap = true;
+
+        if (combatIsGenericMap && lastCombatIsGenericMap)
+            return combat.Map;
+
+        if (!combatIsGenericMap && lastCombatIsGenericMap)
+            return combat.Map;
+
+        if (combatIsGenericMap && !lastCombatIsGenericMap)
+            return previousCombat.Map;
+
+        if (previousCombat.AllCombatEvents.Count > combat.AllCombatEvents.Count)
+            return previousCombat.Map;
+
+        return combat.Map;
+    }
 
     /// <summary>
     ///     Find a map for the provided combat entity from our MapDetectionSettings object.
@@ -357,30 +424,38 @@ public static class ParserHelper
     /// <summary>
     /// </summary>
     /// <param name="combatLogParseSettings">Parser settings</param>
-    /// <param name="combatListResult">The combat list</param>
+    /// <param name="finalCombatListResult">The combat list</param>
     /// <returns>
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     /// <exception cref="ArgumentNullException"></exception>
     private static CombatLogParserResult TryApplyCombatListPostProcessing(
         CombatLogParseSettings combatLogParseSettings,
-        List<Combat> combatListResult
+        ref SyncNotifyCollection<Combat> finalCombatListResult
     )
     {
         var resultFinal = new CombatLogParserResult();
 
-        var resultRejection = TryApplyParserRejectLogicToCombatList(combatLogParseSettings, combatListResult);
+        var resultRejection = TryApplyParserRejectLogicToCombatList(combatLogParseSettings, ref finalCombatListResult);
         resultFinal.MergeResult(resultRejection);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        var resultSplitLogic = TryApplyRejectUnrelatedEntitiesToCombatList(combatLogParseSettings, combatListResult);
+        var resultSplitLogic =
+            TryApplyRejectUnrelatedEntitiesToCombatList(combatLogParseSettings, ref finalCombatListResult);
         resultFinal.MergeResult(resultSplitLogic);
         if (resultFinal.MaxLevel >= ResultLevel.Halt)
             return resultFinal;
 
-        var resultDetectMap = TryDetermineMapsForCombatList(combatLogParseSettings, combatListResult);
+        var resultDetectMap = TryDetermineMapsForCombatList(combatLogParseSettings, ref finalCombatListResult);
         resultFinal.MergeResult(resultDetectMap);
+
+        if (combatLogParseSettings.IsCombineSimilarCombatInstances)
+        {
+            var resultCombine =
+                TryCombineCombatsWithSameMapAndPlayers(combatLogParseSettings, ref finalCombatListResult);
+            resultFinal.MergeResult(resultCombine);
+        }
 
         return resultFinal;
     }
@@ -389,13 +464,13 @@ public static class ParserHelper
     ///     Implements multiple basic parser rejection features, which attempts to clean up the combat list.
     /// </summary>
     /// <param name="combatLogParseSettings">The parser settings</param>
-    /// <param name="combatList">The combat list</param>
+    /// <param name="finalCombatListResult">The combat list</param>
     /// <returns>
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     private static CombatLogParserResult TryApplyParserRejectLogicToCombatList(
         CombatLogParseSettings combatLogParseSettings,
-        List<Combat> combatList)
+        ref SyncNotifyCollection<Combat> finalCombatListResult)
     {
         var resultFinal = new CombatLogParserResult();
 
@@ -404,7 +479,7 @@ public static class ParserHelper
             && !combatLogParseSettings.IsEnforceCombatEventMinimum)
             return resultFinal;
 
-        foreach (var combat in combatList.ToList())
+        foreach (var combat in finalCombatListResult.ToList())
         {
             if (combatLogParseSettings.IsRejectCombatWithNoPlayers && combat.PlayerEntities.Count == 0)
             {
@@ -412,7 +487,7 @@ public static class ParserHelper
                 combat.RejectionReason = "Reject If No Players";
                 combat.RejectionDetails =
                     $"Rejected Combat: Start={combat.CombatStart?.ToString("g")}, Reason={combat.RejectionReason}";
-                if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) combatList.Remove(combat);
+                if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) finalCombatListResult.Remove(combat);
                 Log.Debug(combat.RejectionDetails);
                 resultFinal.AddMessage(combat.RejectionDetails);
                 resultFinal.AddRejectedObject(combat);
@@ -432,7 +507,7 @@ public static class ParserHelper
                     combat.RejectionReason = "Reject If No Players From Account";
                     combat.RejectionDetails =
                         $"Rejected Combat: Start={combat.CombatStart?.ToString("g")}, Reason={combat.RejectionReason}";
-                    if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) combatList.Remove(combat);
+                    if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) finalCombatListResult.Remove(combat);
                     Log.Debug(combat.RejectionDetails);
                     resultFinal.AddMessage(combat.RejectionDetails);
                     resultFinal.AddRejectedObject(combat);
@@ -445,9 +520,10 @@ public static class ParserHelper
             {
                 combat.Rejected = true;
                 combat.RejectionReason = "Enforce Event Minimum";
-                combat.RejectionDetails =  $"Rejected Combat: Start={combat.CombatStart?.ToString("g")}, Reason={combat.RejectionReason}";
+                combat.RejectionDetails =
+                    $"Rejected Combat: Start={combat.CombatStart?.ToString("g")}, Reason={combat.RejectionReason}";
 
-                if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) combatList.Remove(combat);
+                if (!combatLogParseSettings.IsDisplayRejectedParserItemsInUi) finalCombatListResult.Remove(combat);
 
                 Log.Debug(combat.RejectionDetails);
                 resultFinal.AddMessage(combat.RejectionDetails);
@@ -463,13 +539,13 @@ public static class ParserHelper
     ///     merged into a combat instance.
     /// </summary>
     /// <param name="combatLogParseSettings">The parser settings</param>
-    /// <param name="combatList">The combat list</param>
+    /// <param name="finalCombatListResult">The combat list</param>
     /// <returns>
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     private static CombatLogParserResult TryApplyRejectUnrelatedEntitiesToCombatList(
         CombatLogParseSettings combatLogParseSettings,
-        List<Combat> combatList)
+        ref SyncNotifyCollection<Combat> finalCombatListResult)
     {
         var resultFinal = new CombatLogParserResult();
         if (!combatLogParseSettings.IsRemoveEntityOutliers
@@ -485,14 +561,14 @@ public static class ParserHelper
         DateTime originalCombatEnd;
         string entityTypeLabel;
 
-        combatList.ForEach(combat =>
+        foreach (var combat in finalCombatListResult)
         {
             // If the entire combat object has already been rejected, then we don't need to process it any further.
-            if (combat.Rejected) return;
+            if (combat.Rejected) continue;
             // Other checks should make this check unnecessary, but some of the checks are configurable, so let's make sure.
-            if (!combat.CombatStart.HasValue || !combat.CombatEnd.HasValue || !combat.CombatDuration.HasValue) return;
+            if (!combat.CombatStart.HasValue || !combat.CombatEnd.HasValue || !combat.CombatDuration.HasValue) continue;
             // This logic is based on timeSpanBetweenCombats, so reject combat with to short of a duration.
-            if (combat.CombatDuration < timeSpanBetweenCombats * 3) return;
+            if (combat.CombatDuration < timeSpanBetweenCombats * 3) continue;
 
             // We keep these values, since they're all based on linq queries, which are affected when we start removing
             // entities.
@@ -561,7 +637,9 @@ public static class ParserHelper
                 // In theory, if we get this far, it's been decided the reject entity is unrelated to the combat instance.
                 possibleRejectEntity.Rejected = true;
                 possibleRejectEntity.RejectionReason = "Remove Unrelated Entity";
-                if (combatLogParseSettings.IsDisplayRejectedParserItemsInUi) combat.RejectedCombatEntities.Add(new RejectedCombatEntity(possibleRejectEntity, originalCombatStart, originalCombatEnd, originalCombatDuration));
+                if (combatLogParseSettings.IsDisplayRejectedParserItemsInUi)
+                    combat.RejectedCombatEntities.Add(new RejectedCombatEntity(possibleRejectEntity,
+                        originalCombatStart, originalCombatEnd, originalCombatDuration));
 
                 if (possibleRejectEntity.IsPlayer)
                 {
@@ -586,8 +664,50 @@ public static class ParserHelper
                 resultFinal.AddMessage(possibleRejectEntity.RejectionDetails);
                 resultFinal.AddRejectedObject(possibleRejectEntity);
             });
-        });
+        }
 
+        return resultFinal;
+    }
+
+    private static CombatLogParserResult TryCombineCombatsWithSameMapAndPlayers(CombatLogParseSettings parserSettings,
+        ref SyncNotifyCollection<Combat> finalCombatListResult)
+    {
+        var resultFinal = new CombatLogParserResult();
+
+        Combat? previousCombat = null;
+
+        var orderedCombatList = finalCombatListResult.ToList();
+        finalCombatListResult.Clear();
+
+        // Go through each Combat object and determine its map
+        foreach (var combat in orderedCombatList)
+            try
+            {
+                // Run through a few validation steps before we attempt a merge.
+                if (!(previousCombat != null
+                      && combat.Map != null
+                      && combat.PlayerEntities.Count == previousCombat.PlayerEntities.Count
+                      && CombatsHaveMatchingPlayers(combat, previousCombat)
+                      && CombatsHaveMatchingUniqueEntities(combat, previousCombat)))
+                {
+                    previousCombat = combat;
+                    finalCombatListResult.Add(previousCombat);
+                    continue;
+                }
+
+                previousCombat.Map = DetermineCombinedMapName(parserSettings, combat, previousCombat);
+                previousCombat.MergeCombat(combat, parserSettings);
+                resultFinal.AddMessage(
+                    $"Merging combat instances: Map={previousCombat.Map}, First Started={previousCombat.CombatStart:HH:mm:ss}, Second Started={combat.CombatStart:HH:mm:ss}");
+            }
+            catch (Exception e)
+            {
+                var errorString = "Error trying to merge combat instances.";
+                Log.Error(errorString, e);
+                resultFinal.AddMessage(errorString, ResultLevel.Error);
+            }
+
+        orderedCombatList.Clear();
         return resultFinal;
     }
 
@@ -595,12 +715,12 @@ public static class ParserHelper
     ///     Make an effort to determine a map for each of our combat instances.
     /// </summary>
     /// <param name="combatLogParseSettings">The parser settings</param>
-    /// <param name="combatList">The combat list</param>
+    /// <param name="finalCombatListResult">The combat list</param>
     /// <returns>
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     private static CombatLogParserResult TryDetermineMapsForCombatList(CombatLogParseSettings combatLogParseSettings,
-        List<Combat> combatList)
+        ref SyncNotifyCollection<Combat> finalCombatListResult)
     {
         var resultFinal = new CombatLogParserResult();
 
@@ -612,7 +732,7 @@ public static class ParserHelper
         }
 
         // Go through each Combat object and determine its map
-        foreach (var combat in combatList)
+        foreach (var combat in finalCombatListResult)
             try
             {
                 combatLogParseSettings.MapDetectionSettings?.ResetCombatMatchCountForAllMaps();
@@ -637,46 +757,47 @@ public static class ParserHelper
     /// </summary>
     /// <param name="combatLogParseSettings">The parser settings</param>
     /// <param name="combatEventListOrderedByTimestamp">A list of combat events, used to construct our combat hierarchy.</param>
-    /// <param name="combatListResult">The combat list</param>
+    /// <param name="finalCombatListResult">The combat list</param>
     /// <returns>
     ///     <see cref="CombatLogParserResult" />
     /// </returns>
     private static CombatLogParserResult TryGetCombatListFromCombatEvents(CombatLogParseSettings combatLogParseSettings,
-        List<CombatEvent>? combatEventListOrderedByTimestamp, out List<Combat> combatListResult)
+        List<CombatEvent>? combatEventListOrderedByTimestamp, ref SyncNotifyCollection<Combat> finalCombatListResult)
     {
         var finalResult = new CombatLogParserResult();
-        combatListResult = new List<Combat>();
+        //combatListResult = new List<Combat>();
 
         if (combatEventListOrderedByTimestamp == null || combatEventListOrderedByTimestamp.Count == 0)
             return finalResult.AddMessage("There's no combat events available", ResultLevel.Halt);
 
-        var combatList = new List<Combat>();
+        //var combatList = new List<Combat>();
+        CombatEvent? previousCombatEvent = null;
 
-        combatEventListOrderedByTimestamp.ForEach(combatEvent =>
+        foreach (var combatEvent in combatEventListOrderedByTimestamp)
         {
-            var latestCombat = combatList.LastOrDefault();
+            var latestCombat = finalCombatListResult.LastOrDefault();
             // Take our first combat event, and use it to create our first combat instance.
             if (latestCombat == null)
             {
                 latestCombat = new Combat(combatEvent, combatLogParseSettings);
-                combatList.Add(latestCombat);
+                finalCombatListResult.Add(latestCombat);
             }
             // We check our current combat event, with the last entry in our current combat instance. If they're more than
             // 90 seconds apart, we use the new combat event to create a new combat instance.
-            else if (combatEvent.Timestamp - latestCombat.CombatEnd >
+            else if (previousCombatEvent != null && combatEvent.Timestamp - previousCombatEvent.Timestamp >
                      TimeSpan.FromSeconds(combatLogParseSettings.HowLongBeforeNewCombatInSeconds))
             {
                 latestCombat = new Combat(combatEvent, combatLogParseSettings);
-                combatList.Add(latestCombat);
+                finalCombatListResult.Add(latestCombat);
             }
             // Go ahead and insert our new combat event into our current combat instance.
             else
             {
                 latestCombat.AddCombatEvent(combatEvent, combatLogParseSettings);
             }
-        });
 
-        combatListResult = combatList;
+            previousCombatEvent = combatEvent;
+        }
 
         return finalResult;
     }

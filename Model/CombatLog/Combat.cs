@@ -28,14 +28,11 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
 
     private DateTime? _combatStart;
 
-    private int? _eventsCount;
-
     private bool _isObjectLocked;
 
     private string? _map;
     private bool _rejected;
     private ObservableCollection<RejectedCombatEntity> _rejectedCombatEntities = [];
-    private string? _rejectionDetails;
     private string? _rejectionReason;
 
     private List<CombatEntityLabel>? _uniqueEntityIds;
@@ -58,12 +55,26 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
     ///     The initial combat event, which establishes our first <see cref="CombatEntity" /> for this
     ///     instance.
     /// </param>
+    /// <param name="combatLogParseSettings">Parser settings</param>
     public Combat(CombatEvent combatEvent, CombatLogParseSettings combatLogParseSettings)
     {
         this.AddCombatEvent(combatEvent, combatLogParseSettings);
     }
 
     #endregion
+    
+    private int _mergeCount;
+
+    public int MergeCount
+    {
+        get => this._mergeCount;
+        // A wierd thing to do, however this needs to reflect the number of combat instances
+        // used to make the final merged combat, but stay zero based so visibility bindings 
+        // work correctly.
+        // So first merge will be incremented by one, so this count will match the actual number of
+        // combats merged is correct.
+        set => SetField(ref this._mergeCount, value == 1 ? 2 : value);
+    }
 
     #region Public Properties
 
@@ -89,10 +100,10 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
 
             var results = new List<DateTime>(2);
 
-            if (this.PlayerEntities.Count > 0)
-                results.Add(this.PlayerEntities.Max(entity => entity.EntityCombatEnd.Value));
-            if (this.NonPlayerEntities.Count > 0)
-                results.Add(this.NonPlayerEntities.Max(entity => entity.EntityCombatEnd.Value));
+            if (this.PlayerEntities.Count > 0 && this.PlayerEntities.Count(entity => entity.EntityCombatEnd.HasValue) > 0)
+                results.Add(this.PlayerEntities.Where(entity => entity.EntityCombatEnd.HasValue).Max(entity => entity.EntityCombatEnd!.Value)); 
+            if (this.NonPlayerEntities.Count > 0 && this.NonPlayerEntities.Count(entity => entity.EntityCombatEnd.HasValue) > 0)
+                results.Add(this.NonPlayerEntities.Where(entity => entity.EntityCombatEnd.HasValue).Max(entity => entity.EntityCombatEnd!.Value));
 
             return this._combatEnd = results.Count > 0 ? results.Max() : DateTime.MaxValue;
         }
@@ -112,10 +123,10 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
 
             var results = new List<DateTime>(2);
 
-            if (this.PlayerEntities.Count > 0)
-                results.Add(this.PlayerEntities.Min(entity => entity.EntityCombatStart.Value));
-            if (this.NonPlayerEntities.Count > 0)
-                results.Add(this.NonPlayerEntities.Min(entity => entity.EntityCombatStart.Value));
+            if (this.PlayerEntities.Count > 0 && this.PlayerEntities.Count(entity => entity.EntityCombatStart.HasValue) > 0)
+                results.Add(this.PlayerEntities.Where(entity => entity.EntityCombatStart.HasValue).Min(entity => entity.EntityCombatStart!.Value));
+            if (this.NonPlayerEntities.Count > 0 && this.NonPlayerEntities.Count(entity => entity.EntityCombatStart.HasValue) > 0)
+                results.Add(this.NonPlayerEntities.Where(entity => entity.EntityCombatStart.HasValue).Min(entity => entity.EntityCombatStart!.Value));
 
             return this._combatStart = results.Count > 0 ? results.Min() : DateTime.MinValue;
         }
@@ -123,22 +134,6 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
     }
 
     [JsonIgnore] public DateTime? ImportedDate { get; set; }
-
-    /// <summary>
-    ///     A total number of events for Player and NonPlayer entities.
-    /// </summary>
-    public int? EventsCount
-    {
-        get
-        {
-            if (this._eventsCount.HasValue && this._isObjectLocked)
-                return this._eventsCount.Value;
-
-            return this._eventsCount = this.PlayerEntities.Sum(en => en.CombatEventsList.Count) +
-                                       this.NonPlayerEntities.Sum(en => en.CombatEventsList.Count);
-        }
-        set => this._eventsCount = value;
-    }
 
     /// <summary>
     ///     Return a unique list of Ids and Labels from our combat entities.
@@ -198,8 +193,7 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
             if (this.NonPlayerEntities.Count > 0)
                 allEntities.AddRange(this.NonPlayerEntities.SelectMany(ent => ent.CombatEventsList));
 
-            return this._allCombatEvents =
-                allEntities.Count > 0 ? allEntities.OrderBy(ev => ev.Timestamp).ToList() : null;
+            return this._allCombatEvents = allEntities.Count > 0 ? allEntities.OrderBy(ev => ev.Timestamp).ToList() : allEntities;
         }
     }
 
@@ -276,6 +270,7 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
     ///     A method used to inject new <see cref="CombatEvent" /> objects into our <see cref="CombatEntity" /> hierarchy.
     /// </summary>
     /// <param name="combatEvent">A new combat event to inject into our hierarchy.</param>
+    /// <param name="combatLogParseSettings">Parser settings</param>
     public void AddCombatEvent(CombatEvent combatEvent, CombatLogParseSettings combatLogParseSettings)
     {
         if (this._isObjectLocked)
@@ -339,7 +334,7 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
     /// <inheritdoc />
     public override string ToString()
     {
-        return $"EntityCombatDuration={this.CombatDuration}, Start={this.CombatStart}, End={this.CombatEnd}";
+        return $"Start={this.CombatStart}, Events={this.AllCombatEvents.Count}, Map={Map}";
     }
 
     #endregion
@@ -373,8 +368,8 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
         this._combatDuration = null;
         this._combatEnd = null;
         this._combatStart = null;
-        this._eventsCount = null;
         this._uniqueEntityIds = null;
+        this._allCombatEvents = null;
 
         var memberInfo = this.GetType().GetProperties();
         memberInfo.ToList().ForEach(prop => this.OnPropertyChanged(prop.Name));
@@ -392,4 +387,11 @@ public class Combat : INotifyPropertyChanged, IRejectAbleEntity
     }
 
     #endregion
+
+    public void MergeCombat(Combat combat, CombatLogParseSettings parseSettings)
+    {
+        combat.AllCombatEvents.ToList().ForEach(evt => this.AddCombatEvent(evt, parseSettings));
+        this.MergeCount++;
+        this.RefreshProperties();
+    }
 }

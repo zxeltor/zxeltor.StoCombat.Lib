@@ -9,10 +9,11 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Humanizer;
 using Newtonsoft.Json;
+using zxeltor.StoCombat.Lib.Classes;
+using zxeltor.StoCombat.Lib.Helpers;
 using zxeltor.StoCombat.Lib.Model.CombatLog;
 using zxeltor.StoCombat.Lib.Parser;
 using zxeltor.Types.Lib.Collections;
-using zxeltor.Types.Lib.Extensions;
 
 namespace zxeltor.StoCombat.Lib.Model.Realtime;
 
@@ -23,51 +24,31 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
 {
     #region Private Fields
 
-    private SyncNotifyCollection<CombatEventType>? _combatEventTypeListForEntity;
+    [ResetFieldOnRefresh] private SyncNotifyCollection<CombatEntityDeadZone>? _deadZones;
 
-    private SyncNotifyCollection<CombatPetEventType>? _combatEventTypeListForEntityPets;
+    [ResetFieldOnRefresh] private int? _entityCombatAttacks;
 
-    private SyncNotifyCollection<CombatEntityDeadZone>? _deadZones;
+    [ResetFieldOnRefresh] private TimeSpan? _entityCombatDuration;
 
-    private RealtimeCombatLogParseSettings _combatLogParseSettings;
-    public bool IsCombinePets
-    {
-        get => this._isCombinePets;
-        set => this.SetField(ref this._isCombinePets, value);
-    }
-    private bool _isCombinePets = true;
+    [ResetFieldOnRefresh] private DateTime? _entityCombatEnd;
 
-    private bool _isInCombat;
+    [ResetFieldOnRefresh] private TimeSpan? _entityCombatInActive;
 
-    private int? _entityCombatAttacks;
+    [ResetFieldOnRefresh] private int? _entityCombatKills;
 
-    private TimeSpan? _entityCombatDuration;
+    [ResetFieldOnRefresh] private DateTime? _entityCombatStart;
 
-    private DateTime? _entityCombatEnd;
+    [ResetFieldOnRefresh] private double? _entityMagnitudePerSecond;
 
-    private TimeSpan? _entityCombatInActive;
+    [ResetFieldOnRefresh] private double? _entityMaxMagnitude;
 
-    private int? _entityCombatKills;
-
-    private DateTime? _entityCombatStart;
-
-    private double? _entityMagnitudePerSecond;
-
-    private double? _entityMaxMagnitude;
-
-    private double? _entityTotalMagnitude;
+    [ResetFieldOnRefresh] private double? _entityTotalMagnitude;
 
     private bool _isEnableInactiveTimeCalculations = true;
 
+    private bool _isInCombat;
+
     private int? _minInActiveInSeconds;
-
-    private double? _petsMagnitudePerSecond;
-
-    private double? _petsMaxMagnitude;
-
-    private double? _petsTotalMagnitude;
-
-    private int? _assistedCombatKills;
 
     #endregion
 
@@ -76,25 +57,22 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     /// <summary>
     ///     Constructor needed for JSON deserialization
     /// </summary>
-    public RealtimeCombatEntity()
+    public RealtimeCombatEntity(string ownerDisplay, string? ownerInternal = null)
     {
+        this.OwnerDisplay = ownerDisplay;
+        this.OwnerInternal = ownerInternal ?? ownerDisplay;
         this.IsInCombat = true;
     }
 
     /// <summary>
     ///     The main constructor
     /// </summary>
-    public RealtimeCombatEntity(CombatEvent combatEvent, RealtimeCombatLogParseSettings combatLogParseSettings) : this() 
+    public RealtimeCombatEntity(CombatEvent combatEvent, RealtimeCombatLogParseSettings combatLogParseSettings) : this(
+        combatEvent.OwnerDisplay, combatEvent.OwnerInternal)
     {
-        // The owner columns of the combat event are what identify a combat entity.
-        this.OwnerInternal = combatEvent.OwnerInternal;
-        this.OwnerDisplay = combatEvent.OwnerDisplay;
-
         // Determine if this entity is a player or non-player.
-        this.IsPlayer = !string.IsNullOrWhiteSpace(this.OwnerInternal) &&
-                        (this.OwnerInternal.StartsWith("P[") ? true : false);
+        this.IsPlayer = !string.IsNullOrWhiteSpace(this.OwnerInternal) && this.OwnerInternal.StartsWith("P[");
 
-        this._combatLogParseSettings = combatLogParseSettings;
         this.IsEnableInactiveTimeCalculations = combatLogParseSettings.IsEnableInactiveTimeCalculations;
         this.MinInActiveInSeconds = combatLogParseSettings.MinInActiveInSeconds;
 
@@ -111,7 +89,11 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
         set => this.SetField(ref this._isEnableInactiveTimeCalculations, value);
     }
 
-    public bool IsInCombat { get => this._isInCombat; set => this.SetField(ref this._isInCombat, value); }
+    public bool IsInCombat
+    {
+        get => this._isInCombat;
+        set => this.SetField(ref this._isInCombat, value);
+    }
 
     /// <summary>
     ///     If true this entity is a Player. If false the entity is a Non-Player.
@@ -122,140 +104,127 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     ///     Used to establish the end time for this combat entity.
     ///     <para>The last timestamp from our <see cref="CombatEvent" /> collections, based on ann ordered list.</para>
     /// </summary>
-    public DateTime? EntityCombatEnd => this._combatEventList.Count == 0 ? null : this._combatEventList.Last().Timestamp;
+    [NotifyPropertyChangedOnRefresh]
+    public DateTime? EntityCombatEnd
+    {
+        get
+        {
+            if (this._entityCombatEnd == null)
+                this._entityCombatEnd =
+                    this.CombatEventsList.Count == 0 ? null : this.CombatEventsList.Last().Timestamp;
+
+            return this._entityCombatEnd;
+        }
+    }
 
     /// <summary>
     ///     Used to establish the start time for this combat entity.
     ///     <para>The first timestamp from our <see cref="CombatEvent" /> collections, based on an ordered list.</para>
     /// </summary>
-    public DateTime? EntityCombatStart =>
-        this._combatEventList.Count == 0
-            ? null // This should be possible, but checking for it anyway.
-            : this._combatEventList.First().Timestamp;
+    [NotifyPropertyChangedOnRefresh]
+    public DateTime? EntityCombatStart
+    {
+        get
+        {
+            if (this._entityCombatStart == null)
+                this._entityCombatStart = this.CombatEventsList.Count == 0
+                    ? null // This should be possible, but checking for it anyway.
+                    : this.CombatEventsList.First().Timestamp; //.Min(ev => ev.Timestamp);
+
+            return this._entityCombatStart;
+        }
+    }
 
     /// <summary>
     ///     A rudimentary calculation for player events EntityMagnitudePerSecond, and probably incorrect.
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public double? EntityMagnitudePerSecond
     {
         get
         {
-            var entityEvents = this._combatEventList
-                .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
+            if (this._entityMagnitudePerSecond == null)
+            {
+                var entityEvents = this.CombatEventsList
+                    .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
-            if (entityEvents.Count == 0 || this.EntityCombatDuration == null)
+                if (entityEvents.Count == 0 || this.EntityCombatDuration == null)
+                    return this._entityMagnitudePerSecond = 0;
+
+                if (this.EntityCombatInActive != null &&
+                    this.EntityCombatDuration.Value > this.EntityCombatInActive.Value)
+                {
+                    var duration = this.EntityCombatDuration.Value - this.EntityCombatInActive.Value;
+                    return this._entityMagnitudePerSecond = this.EntityTotalMagnitude / duration.TotalSeconds;
+                }
+
                 return this._entityMagnitudePerSecond = 0;
+            }
 
-            var duration = this.EntityCombatDuration.Value;
-
-            if (this.EntityCombatInActive != null && this.EntityCombatDuration.Value > this.EntityCombatInActive.Value)
-                duration = this.EntityCombatDuration.Value - this.EntityCombatInActive.Value;
-
-            return this.EntityTotalMagnitude / duration.TotalSeconds;
+            return this._entityMagnitudePerSecond;
         }
     }
 
     /// <summary>
     ///     A rudimentary calculation for max damage for player events, and probably incorrect.
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public double? EntityMaxMagnitude
     {
         get
         {
-            var entityEvents = this._combatEventList
-                .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
+            if (this._entityMaxMagnitude == null)
+            {
+                var entityEvents = this.CombatEventsList
+                    .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
-            if (entityEvents.Count == 0) return this._entityMaxMagnitude = 0;
+                if (entityEvents.Count == 0) return this._entityMaxMagnitude = 0;
 
-            return entityEvents.Max(dam => Math.Abs(dam.Magnitude));
+                return this._entityMaxMagnitude = entityEvents.Max(dam => Math.Abs(dam.Magnitude));
+            }
+
+            return this._entityMaxMagnitude;
         }
     }
 
     /// <summary>
     ///     A rudimentary calculation for total damage for player events, and probably incorrect.
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public double? EntityTotalMagnitude
     {
         get
         {
-            var entityEvents = this._combatEventList
-                .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
+            if (this._entityTotalMagnitude == null)
+            {
+                var entityEvents = this.CombatEventsList
+                    .Where(ev => !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
 
-            if (entityEvents.Count == 0) return this._entityTotalMagnitude = 0;
+                if (entityEvents.Count == 0) return this._entityTotalMagnitude = 0;
 
-            return entityEvents.Sum(dam => Math.Abs(dam.Magnitude));
-        }
-    }
+                return this._entityTotalMagnitude = entityEvents.Sum(dam => Math.Abs(dam.Magnitude));
+            }
 
-    /// <summary>
-    ///     A rudimentary calculation for player pet events EntityMagnitudePerSecond, and probably incorrect.
-    /// </summary>
-    public double? PetsMagnitudePerSecond
-    {
-        get
-        {
-            var petEvents = this._combatEventList.Where(ev =>
-                ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
-
-            if (petEvents.Count == 0 || this.EntityCombatDuration == null)
-                return this._petsMagnitudePerSecond = 0;
-
-            var duration = this.EntityCombatDuration.Value;
-
-            if (this.EntityCombatInActive != null && this.EntityCombatDuration.Value > this.EntityCombatInActive.Value)
-                duration = this.EntityCombatDuration.Value - this.EntityCombatInActive.Value;
-
-            return this.PetsTotalMagnitude / duration.TotalSeconds;
-        }
-    }
-
-    /// <summary>
-    ///     A rudimentary calculation for max damage for player pet events, and probably incorrect.
-    /// </summary>
-    public double? PetsMaxMagnitude
-    {
-        get
-        {
-            var petEvents = this._combatEventList.Where(ev =>
-                ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
-
-            if (petEvents.Count == 0) return this._petsMaxMagnitude = 0;
-
-            return petEvents.Max(dam => Math.Abs(dam.Magnitude));
-        }
-    }
-
-    /// <summary>
-    ///     A rudimentary calculation for total damage for player pet events, and probably incorrect.
-    /// </summary>
-    public double? PetsTotalMagnitude
-    {
-        get
-        {
-            var petEvents = this._combatEventList.Where(ev =>
-                ev.IsOwnerPetEvent && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase)).ToList();
-
-            if (petEvents.Count == 0) return this._petsTotalMagnitude = 0;
-
-            return petEvents.Sum(dam => Math.Abs(dam.Magnitude));
+            return this._entityTotalMagnitude;
         }
     }
 
     /// <summary>
     ///     Get a number of attacks for this entity
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public int? EntityCombatAttacks
     {
         get
         {
-            this._entityCombatAttacks = 0;
+            if (this._entityCombatAttacks == null)
+            {
+                this._entityCombatAttacks = 0;
 
-            if (this.CombatEventTypeListForEntity != null)
-                this._entityCombatAttacks += this.CombatEventTypeListForEntity.Sum(evt => evt.Attacks);
-
-            if (this.CombatEventTypeListForEntityPets != null)
-                this._entityCombatAttacks +=
-                    this.CombatEventTypeListForEntityPets.Sum(pEvt => pEvt.CombatEventTypes.Sum(evt => evt.Attacks));
+                this._entityCombatAttacks = this.CombatEventsList.Count(ev =>
+                    !ev.Type.Equals("Shield", StringComparison.CurrentCultureIgnoreCase)
+                    && !ev.Type.Equals("HitPoints", StringComparison.CurrentCultureIgnoreCase));
+            }
 
             return this._entityCombatAttacks;
         }
@@ -264,18 +233,15 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     /// <summary>
     ///     Get a number of kills for this entity.
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public int? EntityCombatKills
     {
         get
         {
-            var killList = this._combatEventList
-                .Where(ev => ev.Flags.Contains("kill", StringComparison.CurrentCultureIgnoreCase))
-                .ToList();
-
-            if (killList.Count == 0)
-                return this._entityCombatKills = 0;
-
-            return killList.Count;
+            if (this._entityCombatKills == null)
+                this._entityCombatKills = this.CombatEventsList.Count(ev =>
+                    ev.Flags.Contains("kill", StringComparison.CurrentCultureIgnoreCase));
+            return this._entityCombatKills;
         }
     }
 
@@ -283,109 +249,6 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     {
         get => this._minInActiveInSeconds;
         set => this.SetField(ref this._minInActiveInSeconds, value);
-    }
-
-    public SyncNotifyCollection<CombatEvent> CombatEventsList => this._combatEventList;
-
-    public SyncNotifyCollection<CombatEvent> AssistEventsList => this._assistedEventList;
-
-    private SyncNotifyCollection<CombatEvent> _assistedEventList { get; } = new();
-    private SyncNotifyCollection<CombatEvent> _combatEventList { get; } = new();
-
-    /// <summary>
-    ///     A list of timespans where the Player is considered Inactive.
-    /// </summary>
-    public SyncNotifyCollection<CombatEntityDeadZone> DeadZones
-    {
-        get
-        {
-            if (!this.IsEnableInactiveTimeCalculations || this.CombatEventsList.Count == 0)
-                return new SyncNotifyCollection<CombatEntityDeadZone>(0);
-
-            var deadZones = new SyncNotifyCollection<CombatEntityDeadZone>();
-
-            var minNoActivity = this.MinInActiveInSeconds.HasValue &&
-                                TimeSpan.FromSeconds(this.MinInActiveInSeconds.Value) > TimeSpan.FromSeconds(1)
-                ? TimeSpan.FromSeconds(this.MinInActiveInSeconds.Value)
-                : TimeSpan.FromSeconds(1);
-
-            var lastTimestamp = this.CombatEventsList.First().Timestamp;
-
-            foreach (var combatEvent in this.CombatEventsList)
-            {
-                if (combatEvent.Timestamp == this.EntityCombatStart) continue;
-
-                if (combatEvent.Timestamp - lastTimestamp >= minNoActivity)
-                    deadZones.Add(new CombatEntityDeadZone(lastTimestamp, combatEvent.Timestamp));
-
-                lastTimestamp = combatEvent.Timestamp;
-            }
-
-            return deadZones;
-        }
-    }
-
-    /// <summary>
-    ///     A list of combat events for this entity.
-    /// </summary>
-    ///private SyncNotifyCollection<CombatEvent> _combatEventList { get; } = new();
-
-    /// <summary>
-    ///     Get a list of event types specific to the Player or Non-Player
-    /// </summary>
-    [JsonIgnore]
-    public SyncNotifyCollection<CombatEventType>? CombatEventTypeListForEntity
-    {
-        get
-        {
-            if (this._combatEventList.All(ev => ev.IsOwnerPetEvent)) return new SyncNotifyCollection<CombatEventType>(0);
-
-            this._combatEventTypeListForEntity = this._combatEventList.Where(ev => !ev.IsOwnerPetEvent)
-                .GroupBy(ev => new { ev.EventInternal, ev.EventDisplay })
-                .OrderBy(evg => evg.Key.EventDisplay)
-                .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive)).ToSyncNotifyCollection();
-
-            return this._combatEventTypeListForEntity;
-        }
-    }
-
-    /// <summary>
-    ///     Get a list of event types specific to the Player or Non-Player Pets
-    /// </summary>
-    [JsonIgnore]
-    public SyncNotifyCollection<CombatPetEventType>? CombatEventTypeListForEntityPets
-    {
-        get
-        {
-            if (!this._combatEventList.Any(ev => ev.IsOwnerPetEvent)) return new SyncNotifyCollection<CombatPetEventType>();
-
-            if (this.IsCombinePets)
-            {
-                var myEvents = this._combatEventList.Where(ev => ev.IsOwnerPetEvent)
-                    .GroupBy(ev => new { ev.SourceDisplay, ev.EventInternal, ev.EventDisplay })
-                    .OrderBy(evg => evg.Key.EventDisplay)
-                    .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive))
-                    .ToList();
-
-                return myEvents
-                    .GroupBy(evt => new { evt.SourceDisplay, evt.EventInternal })
-                    .Select(evtGrp =>
-                        new CombatPetEventType(evtGrp.ToList())).ToSyncNotifyCollection();
-            }
-            else
-            {
-                var myEvents = this._combatEventList.Where(ev => ev.IsOwnerPetEvent)
-                    .GroupBy(ev => new { ev.SourceInternal, ev.EventInternal, ev.EventDisplay })
-                    .OrderBy(evg => evg.Key.EventDisplay)
-                    .Select(evg => new CombatEventType(evg.ToList(), inactiveTimeSpan: this.EntityCombatInActive))
-                    .ToList();
-
-                return myEvents.GroupBy(evt =>
-                        new { evt.SourceInternal, evt.SourceDisplay, evt.EventInternal })
-                    .Select(evtGrp =>
-                        new CombatPetEventType(evtGrp.ToList())).ToSyncNotifyCollection();
-            }
-        }
     }
 
     /// <summary>
@@ -424,36 +287,88 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
             return str.ToString();
         }
     }
-    
+
+    /// <summary>
+    ///     A list of timespans where the Player is considered Inactive.
+    /// </summary>
+    public SyncNotifyCollection<CombatEntityDeadZone> DeadZones
+    {
+        get
+        {
+            if (this._deadZones == null)
+            {
+                if (!this.IsEnableInactiveTimeCalculations || this.CombatEventsList.Count == 0)
+                    return new SyncNotifyCollection<CombatEntityDeadZone>(0);
+
+                var deadZones = new SyncNotifyCollection<CombatEntityDeadZone>();
+
+                var minNoActivity = this.MinInActiveInSeconds.HasValue &&
+                                    TimeSpan.FromSeconds(this.MinInActiveInSeconds.Value) > TimeSpan.FromSeconds(1)
+                    ? TimeSpan.FromSeconds(this.MinInActiveInSeconds.Value)
+                    : TimeSpan.FromSeconds(1);
+
+                var lastTimestamp = this.CombatEventsList.First().Timestamp; // .Min(evt => evt.Timestamp);
+
+                foreach (var combatEvent in this.CombatEventsList)
+                {
+                    if (combatEvent.Timestamp == this.EntityCombatStart) continue;
+
+                    if (combatEvent.Timestamp - lastTimestamp >= minNoActivity)
+                        deadZones.Add(new CombatEntityDeadZone(lastTimestamp, combatEvent.Timestamp));
+
+                    lastTimestamp = combatEvent.Timestamp;
+                }
+
+                this._deadZones = deadZones;
+            }
+
+            return this._deadZones;
+        }
+    }
+
+    public SyncNotifyCollection<CombatEvent> CombatEventsList { get; } = [];
+
     /// <summary>
     ///     A humanized string base on combat duration. (<see cref="EntityCombatEnd" /> - <see cref="EntityCombatStart" />)
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public TimeSpan? EntityCombatDuration
     {
         get
         {
-            if (this.EntityCombatEnd.HasValue && this.EntityCombatStart.HasValue)
-                if (this.EntityCombatEnd.Value - this.EntityCombatStart.Value <= Constants.MINCOMBATDURATION)
-                    return this._entityCombatDuration = Constants.MINCOMBATDURATION;
-                else
-                    return this._entityCombatDuration = this.EntityCombatEnd.Value - this.EntityCombatStart.Value;
+            if (this._entityCombatDuration == null)
+            {
+                if (this.EntityCombatEnd.HasValue && this.EntityCombatStart.HasValue)
+                    if (this.EntityCombatEnd.Value - this.EntityCombatStart.Value <= Constants.MINCOMBATDURATION)
+                        return this._entityCombatDuration = Constants.MINCOMBATDURATION;
+                    else
+                        return this._entityCombatDuration = this.EntityCombatEnd.Value - this.EntityCombatStart.Value;
 
-            return null;
+                return this._entityCombatDuration = TimeSpan.Zero;
+            }
+
+            return this._entityCombatDuration;
         }
     }
 
     /// <summary>
     ///     Calculate the total amount of Player inactive time.
     /// </summary>
+    [NotifyPropertyChangedOnRefresh]
     public TimeSpan? EntityCombatInActive
     {
         get
         {
-            if (this.DeadZones.Count > 0)
-                return this._entityCombatInActive =
-                    TimeSpan.FromSeconds(this.DeadZones.Sum(dead => dead.Duration.TotalSeconds));
+            if (this._entityCombatInActive == null)
+            {
+                if (this.DeadZones.Count > 0)
+                    return this._entityCombatInActive =
+                        TimeSpan.FromSeconds(this.DeadZones.Sum(dead => dead.Duration.TotalSeconds));
 
-            return null;
+                return this._entityCombatInActive = TimeSpan.Zero;
+            }
+
+            return this._entityCombatInActive;
         }
     }
 
@@ -465,10 +380,7 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     {
         this.IsInCombat = true;
 
-        //if(combatEvent.OwnerInternal.Equals(this.OwnerInternal))
-        this._combatEventList.Add(combatEvent);
-        //else if(this._combatLogParseSettings.IsIncludeAssistedKillsInAchievements)
-          //  this._assistedEventList.Add(combatEvent);
+        this.CombatEventsList.Add(combatEvent);
     }
 
     /// <summary>
@@ -476,11 +388,16 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public void Refresh()
+    {
+        CombatRefreshHelper.RefreshObject(this);
+    }
+
     /// <inheritdoc />
     public override string ToString()
     {
         return
-            $"Owner={this.OwnerDisplay}, Player={this.IsPlayer}, EntityCombatKills={this.EntityCombatKills}, EntityCombatDuration={(this.EntityCombatEnd.Value - this.EntityCombatStart.Value).Humanize()}, Start={this.EntityCombatStart}, End={this.EntityCombatEnd}";
+            $"Owner={this.OwnerDisplay}, Player={this.IsPlayer}, EntityCombatKills={this.EntityCombatKills}, EntityCombatDuration={this.EntityCombatDuration:G}, Start={this.EntityCombatStart}, End={this.EntityCombatEnd}";
     }
 
     #endregion
@@ -492,33 +409,6 @@ public class RealtimeCombatEntity : INotifyPropertyChanged
     protected void OnPropertyChanged([CallerMemberName] string? name = null)
     {
         if (name != null) this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    }
-
-    public void SendRealtimeUpdateNotifications()
-    {
-        var memberInfo = this.GetType().GetProperties();
-        memberInfo.ToList().ForEach(prop => this.OnPropertyChanged(prop.Name));
-    }
-
-    private void RefreshProperties()
-    {
-        this._combatEventTypeListForEntity = null;
-        this._combatEventTypeListForEntityPets = null;
-        this._entityCombatInActive = null;
-        this._entityCombatAttacks = null;
-        this._entityCombatDuration = null;
-        this._entityCombatEnd = null;
-        this._entityCombatKills = null;
-        this._entityCombatStart = null;
-        this._entityMagnitudePerSecond = null;
-        this._entityMaxMagnitude = null;
-        this._entityTotalMagnitude = null;
-        this._petsMagnitudePerSecond = null;
-        this._petsMaxMagnitude = null;
-        this._petsTotalMagnitude = null;
-
-        var memberInfo = this.GetType().GetProperties();
-        memberInfo.ToList().ForEach(prop => this.OnPropertyChanged(prop.Name));
     }
 
     /// <summary>
