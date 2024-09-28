@@ -26,7 +26,7 @@ public class CombatLogParseSettings : INotifyPropertyChanged
     private bool _isCombineSimilarCombatInstances = true;
     private bool _isDisplayRejectedParserItemsInUi;
     private bool _isEnableInactiveTimeCalculations = true;
-    private bool _isEnforceCombatEventMinimum;
+    private bool _isEnforceCombatEventMinimum = true;
     private bool _isEnforceMapMaxPlayerCount = true;
     private bool _isEnforceMapMinPlayerCount = true;
     private bool _isRejectCombatIfUserPlayerNotIncluded = true;
